@@ -13009,6 +13009,10 @@ def extract(
         if _df and "\\" in str(_df):
             _item["definition_file"] = PurePath(_df).as_posix()
 
+    from graphify.extractors.cmp_wrappers import add_cmp_wrapper_links
+
+    add_cmp_wrapper_links(paths, all_nodes, all_edges, root)
+
     return {
         "nodes": all_nodes,
         "edges": all_edges,

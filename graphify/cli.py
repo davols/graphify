@@ -4907,6 +4907,15 @@ def dispatch_command(cmd: str) -> None:
                 code_files, [Path(p) for p in files_by_type.get("code", [])],
                 [Path(p) for p in [*deleted_files, *excluded_files, *graph_stale_sources]],
             )
+            from graphify.extractors.cmp_wrappers import refresh_cmp_paths
+            live_code = [
+                Path(p)
+                for p in [*files_by_type.get("code", []), *detection.get("unchanged_files", {}).get("code", [])]
+            ]
+            changed_cmp = [*code_files, *(Path(p) for p in [*deleted_files, *excluded_files, *graph_stale_sources])]
+            for path in refresh_cmp_paths(changed_cmp, live_code):
+                if path not in code_files:
+                    code_files.append(path)
 
         # AST extraction on code files. Empty code list (docs-only corpus) is
         # the issue #698 case — skip cleanly instead of crashing inside extract().

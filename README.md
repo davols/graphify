@@ -342,12 +342,19 @@ graphify parses ~40 programming languages locally with tree-sitter AST, and maps
 Android and Compose resource XML under `res/values*/` or `composeResources/values*/`
 is also extracted locally. String and plural nodes include the resource name,
 text, qualifier, and source location, so both a name and a translation can be
-queried. Locale variants remain separate entries; a project's Kotlin wrapper
-accessor is not inferred from the XML. Credential-shaped values are redacted,
-and displayed text may require source verification. Files in other XML
-directories are not claimed. Normal ignore rules still apply; use a narrowly
-scoped `--no-gitignore` scan when the resource files are generated and
-intentionally ignored.
+queried. Locale variants remain separate entries. For Compose wrappers, scan a
+common source-set root containing both `composeResources` and Kotlin files;
+direct object aliases and `Res.string` / `Res.plurals` references are linked to
+their matching localized resources when the declarations are unambiguous. For
+example, scan `src/commonMain`, not just `src/commonMain/composeResources`.
+Wrapper names come from Kotlin declarations, not inferred XML naming. A graph
+reflects the scanned sources, not necessarily a consuming app's dependency
+version. Credential-shaped values are redacted, and displayed text may require
+source verification. Files in other XML directories are not claimed. Normal
+ignore rules still apply; use a narrowly scoped `--no-gitignore` scan when the
+resource files are generated and intentionally ignored. Existing graphs created
+before wrapper support need a full extraction (for example `extract --force`)
+to add the links even when none of the source files changed.
 
 ---
 

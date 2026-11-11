@@ -2683,6 +2683,10 @@ def _rebuild_code(
                         continue
             from graphify.extractors.terraform import refresh_terraform_paths
             wanted = refresh_terraform_paths(wanted, code_files, changed_paths)
+            from graphify.extractors.cmp_wrappers import refresh_cmp_paths
+            for path in refresh_cmp_paths(wanted + [Path(p) for p in deleted_source_identities], code_files):
+                if path not in wanted and path not in semantic_doc_set:
+                    wanted.append(path)
             if not wanted and not deleted_paths:
                 print("[graphify watch] No tracked code files in change set - skipping rebuild.")
                 return True
