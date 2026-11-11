@@ -31,6 +31,7 @@ from .go_dispatch import resolve_go_interface_dispatch
 from .swift_dispatch import resolve_swift_protocol_dispatch
 from .pascal_resolution import resolve_pascal_inherited_calls
 from .markdown_resolution import MARKDOWN_MENTION_SUFFIXES, resolve_markdown_mentions
+from .resource_xml import is_android_resource_xml
 
 # --- migrated to graphify/extractors/ (see graphify/extractors/MIGRATION.md) ---
 from graphify.rcfile import (
@@ -52,6 +53,7 @@ from graphify.extractors.base import (  # noqa: F401
     active_scan_root,
     set_active_scan_root,
 )
+from graphify.extractors.android_resources import extract_android_resources  # noqa: F401
 from graphify.extractors.apex import extract_apex  # noqa: F401
 from graphify.extractors.bash import extract_bash  # noqa: F401
 from graphify.extractors.blade import extract_blade  # noqa: F401
@@ -10639,6 +10641,8 @@ def _get_extractor(path: Path, *, sniff_headers: bool = True) -> Any | None:
     remapped = effective_suffix(path)
     if remapped != path.suffix:
         return _DISPATCH.get(remapped) or _DISPATCH.get(remapped.lower())
+    if is_android_resource_xml(path):
+        return extract_android_resources
     # `.h` is C/C++/ObjC-ambiguous; route Objective-C headers to extract_objc
     # (the suffix map sends `.h` to extract_c, which can't read @interface etc.).
     # ObjC sniffing has priority over the C++ sniff: an Objective-C++ header can
@@ -13054,6 +13058,15 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
     def _ignored(p: Path) -> bool:
         return bool(patterns and _is_ignored(p, ignore_root, patterns, _cache=ignore_cache))
 
+    def _supported(p: Path) -> bool:
+        suffix = p.suffix
+        if suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS:
+            return True
+        if not is_android_resource_xml(p):
+            return False
+        mapped = effective_suffix(p).lower()
+        return mapped == ".xml" or mapped in _EXTENSIONS
+
     if not follow_symlinks:
         # The old rglob filter rejected paths with a noise component anywhere,
         # including components of target itself — preserve that.
@@ -13073,8 +13086,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
             ]
             for fname in filenames:
                 p = dp / fname
-                suffix = p.suffix
-                if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and not _ignored(p) and not _is_installed_graphify_file(p) and _resolves_under_root(p, containment_root):
+                if _supported(p) and not _ignored(p) and not _is_installed_graphify_file(p) and _resolves_under_root(p, containment_root):
                     results.append(p)
         return sorted(results)
     # Walk with symlink following + cycle detection
@@ -13094,8 +13106,7 @@ def collect_files(target: Path, *, follow_symlinks: bool = False, root: Path | N
         ]
         for fname in filenames:
             p = dp / fname
-            suffix = p.suffix
-            if (suffix in _EXTENSIONS or suffix.lower() in _EXTENSIONS) and not _ignored(p) and not _is_installed_graphify_file(p) and _resolves_under_root(p, containment_root):
+            if _supported(p) and not _ignored(p) and not _is_installed_graphify_file(p) and _resolves_under_root(p, containment_root):
                 results.append(p)
     return sorted(results)
 

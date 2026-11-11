@@ -495,6 +495,7 @@ from graphify.rcfile import (
     effective_suffix,
     set_language_overrides,
 )
+from graphify.resource_xml import is_android_resource_xml
 
 _WATCHED_EXTENSIONS = CODE_EXTENSIONS | DOC_EXTENSIONS | PAPER_EXTENSIONS | IMAGE_EXTENSIONS
 _CODE_EXTENSIONS = CODE_EXTENSIONS
@@ -2662,6 +2663,24 @@ def _rebuild_code(
                     # File was deleted or renamed away inside the watched root.
                     # Evict preserved nodes that still claim this source path.
                     _add_deleted_source(deleted_in_root)
+            # A resource may be tracked under multiple symlink paths. Refresh all
+            # tracked aliases when any one changes, or the others remain stale.
+            resource_targets = set()
+            for path in wanted:
+                if is_android_resource_xml(path):
+                    try:
+                        resource_targets.add(path.resolve())
+                    except (OSError, RuntimeError):
+                        continue
+            if resource_targets:
+                for path in code_set:
+                    if path in wanted or path in semantic_doc_set or not is_android_resource_xml(path):
+                        continue
+                    try:
+                        if path.resolve() in resource_targets:
+                            wanted.append(path)
+                    except (OSError, RuntimeError):
+                        continue
             from graphify.extractors.terraform import refresh_terraform_paths
             wanted = refresh_terraform_paths(wanted, code_files, changed_paths)
             if not wanted and not deleted_paths:
@@ -3452,8 +3471,13 @@ def _notify_only(watch_path: Path) -> None:
     print(f"[graphify watch] Flag written to {flag}")
 
 
+def _is_code_path(path: Path) -> bool:
+    suffix = effective_suffix(path).lower()
+    return suffix in _CODE_EXTENSIONS or (suffix == ".xml" and is_android_resource_xml(path))
+
+
 def _has_non_code(changed_paths: list[Path]) -> bool:
-    return any(effective_suffix(p).lower() not in _CODE_EXTENSIONS for p in changed_paths)
+    return any(not _is_code_path(p) for p in changed_paths)
 
 
 def _batch_triggers_rebuild(batch: list[Path]) -> bool:
@@ -3465,7 +3489,7 @@ def _batch_triggers_rebuild(batch: list[Path]) -> bool:
     this, a doc-only deletion batch would sit behind the needs_update flag
     until the next code event or a manual `graphify update` (#2580).
     """
-    has_code = any(effective_suffix(p).lower() in _CODE_EXTENSIONS for p in batch)
+    has_code = any(_is_code_path(p) for p in batch)
     has_deletion = any(not p.exists() for p in batch)
     return has_code or has_deletion
 
@@ -3649,9 +3673,19 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
             if _is_read_only_event(event):
                 return
             path = Path(os.fsdecode(event.src_path))
-            if manual and (
-                path.parent not in watched or not path.parent.exists()
-            ):
+            dest_raw = getattr(event, "dest_path", None)
+            dest_path = Path(os.fsdecode(dest_raw)) if dest_raw else None
+            resource_move = (
+                event.event_type == "moved"
+                and dest_path is not None
+                and (is_android_resource_xml(path) or is_android_resource_xml(dest_path))
+            )
+            source_watched = path.parent in watched and path.parent.exists()
+            dest_watched = (
+                resource_move and dest_path is not None
+                and dest_path.parent in watched and dest_path.parent.exists()
+            )
+            if manual and not (source_watched or dest_watched):
                 return
             if path.name in {".graphifyignore", ".gitignore"}:
                 ignore_patterns = _load_graphifyignore(
@@ -3665,8 +3699,6 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
                     add_tree(watch_root_for_ignore, emit_existing=False)
                 return
             # Atomic replacement reports the new root config in dest_path.
-            dest_raw = getattr(event, "dest_path", None)
-            dest_path = Path(os.fsdecode(dest_raw)) if dest_raw else None
             if path == root_config_path or dest_path == root_config_path:
                 override_snapshot = activate_language_overrides(watch_root_for_ignore)
                 config_changed = True
@@ -3678,22 +3710,29 @@ def watch(watch_path: Path, debounce: float = 3.0) -> None:
             # (node_modules/, .venv/, build/, …) fires first. _is_ignored
             # tolerates absolute paths outside watch_root via its internal
             # relative_to guard, so a stray symlinked event won't raise.
-            if ignore_patterns and _is_ignored(path, watch_root_for_ignore, ignore_patterns):
-                return
             set_language_overrides(override_snapshot)
-            if effective_suffix(path).lower() not in _WATCHED_EXTENSIONS:
-                return
-            try:
-                filter_parts = path.relative_to(watch_root_for_ignore).parts
-            except ValueError:
-                filter_parts = path.parts
-            if any(part.startswith(".") for part in filter_parts):
-                return
-            if _GRAPHIFY_OUT in filter_parts:
-                return
-            last_trigger = time.monotonic()
-            pending = True
-            changed.add(path)
+            candidates = [path]
+            if resource_move and dest_path is not None and dest_path != path:
+                candidates.append(dest_path)
+            for candidate in candidates:
+                if manual and (candidate.parent not in watched or not candidate.parent.exists()):
+                    continue
+                if ignore_patterns and _is_ignored(candidate, watch_root_for_ignore, ignore_patterns):
+                    continue
+                if (effective_suffix(candidate).lower() not in _WATCHED_EXTENSIONS
+                        and not _is_code_path(candidate)):
+                    continue
+                try:
+                    filter_parts = candidate.relative_to(watch_root_for_ignore).parts
+                except ValueError:
+                    if candidate != path:
+                        continue
+                    filter_parts = candidate.parts
+                if any(part.startswith(".") for part in filter_parts) or _GRAPHIFY_OUT in filter_parts:
+                    continue
+                last_trigger = time.monotonic()
+                pending = True
+                changed.add(candidate)
 
     handler = Handler()
     observer = (

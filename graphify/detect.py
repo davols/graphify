@@ -24,6 +24,7 @@ from graphify.google_workspace import (
 )
 from graphify.paths import GRAPHIFY_OUT, GRAPHIFY_OUT_NAME, os_long_path, out_path
 from graphify.rcfile import activate_language_overrides, cache_salt, effective_suffix
+from graphify.resource_xml import is_android_resource_xml
 
 
 class FileType(str, Enum):
@@ -558,6 +559,8 @@ def classify_file(path: Path) -> FileType | None:
     ext = effective_suffix(path).lower()
     if not ext:
         return _shebang_file_type(path)
+    if ext == ".xml" and is_android_resource_xml(path):
+        return FileType.CODE
     if ext in CODE_EXTENSIONS:
         return FileType.CODE
     if ext in PAPER_EXTENSIONS:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from graphify.extractors.android_resources import extract_android_resources
 from graphify.extractors.apex import extract_apex
 from graphify.extractors.bash import extract_bash
 from graphify.extractors.blade import extract_blade
@@ -40,6 +41,7 @@ from graphify.extractors.vbnet import extract_vbnet
 from graphify.extractors.zig import extract_zig
 
 LANGUAGE_EXTRACTORS: dict[str, Callable[[Path], dict]] = {
+    "android_resources": extract_android_resources,
     "apex": extract_apex,
     "bash": extract_bash,
     "blade": extract_blade,

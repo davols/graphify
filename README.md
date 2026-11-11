@@ -339,6 +339,16 @@ Both encourage scoped graph queries before broad source searches. Choose the ins
 
 graphify parses ~40 programming languages locally with tree-sitter AST, and maps docs, PDFs, images, and audio/video through an optional semantic pass. Full list: **[Supported inputs](https://docs.graphify.com/concepts/supported-inputs)**.
 
+Android and Compose resource XML under `res/values*/` or `composeResources/values*/`
+is also extracted locally. String and plural nodes include the resource name,
+text, qualifier, and source location, so both a name and a translation can be
+queried. Locale variants remain separate entries; a project's Kotlin wrapper
+accessor is not inferred from the XML. Credential-shaped values are redacted,
+and displayed text may require source verification. Files in other XML
+directories are not claimed. Normal ignore rules still apply; use a narrowly
+scoped `--no-gitignore` scan when the resource files are generated and
+intentionally ignored.
+
 ---
 
 ## Common commands
